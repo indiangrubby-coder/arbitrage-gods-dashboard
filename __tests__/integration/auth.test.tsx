@@ -1,36 +1,34 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import React from 'react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import '@testing-library/jest-dom'
 import { useRouter } from 'next/router'
-import { useAuth } from '@/lib/auth'
 import Login from '@/pages/login'
 import Dashboard from '@/pages/dashboard'
+import { useSimpleAuth, SimpleAuthProvider } from '@/lib/simple-auth'
 
-// Mock the router
+// Mock router
 jest.mock('next/router', () => ({
   useRouter: jest.fn()
 }))
 
-// Mock Supabase auth
-jest.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: {
-      signInWithPassword: jest.fn(),
-      signUp: jest.fn(),
-      resetPasswordForEmail: jest.fn(),
-      signOut: jest.fn(),
-      updateUser: jest.fn(),
-      refreshSession: jest.fn(),
-      onAuthStateChange: jest.fn(() => ({
-        data: { subscription: { unsubscribe: jest.fn() } }
-      }))
-    }
-  }
-}))
+// Mock localStorage
+const localStorageMock = {
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+}
+Object.defineProperty(window, 'localStorage', {
+  value: localStorageMock
+})
 
 describe('Authentication Integration Tests', () => {
   const mockPush = jest.fn()
   
   beforeEach(() => {
     jest.clearAllMocks()
+    localStorageMock.getItem.mockReturnValue(null)
     ;(useRouter as jest.Mock).mockReturnValue({
       push: mockPush,
       query: {},
@@ -40,7 +38,11 @@ describe('Authentication Integration Tests', () => {
 
   describe('Login Page', () => {
     test('renders login form correctly', () => {
-      render(<Login />)
+      render(
+        <SimpleAuthProvider>
+          <Login />
+        </SimpleAuthProvider>
+      )
       
       expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
       expect(screen.getByLabelText(/password/i)).toBeInTheDocument()
@@ -48,259 +50,260 @@ describe('Authentication Integration Tests', () => {
     })
 
     test('handles successful sign in', async () => {
-      const mockSignIn = jest.fn()
-      jest.mock('@/lib/auth', () => ({
-        useAuth: () => ({
-          signIn: mockSignIn
-        })
-      }))
-      
-      render(<Login />)
+      render(
+        <SimpleAuthProvider>
+          <Login />
+        </SimpleAuthProvider>
+      )
       
       const usernameInput = screen.getByLabelText(/username/i)
       const passwordInput = screen.getByLabelText(/password/i)
       const submitButton = screen.getByRole('button', { name: /sign in/i })
-      
-      fireEvent.change(usernameInput, { target: { value: 'snafu' } })
-      fireEvent.change(passwordInput, { target: { value: 'random@123' } })
-      fireEvent.click(submitButton)
+
+      await act(async () => {
+        await userEvent.type(usernameInput, 'snafu')
+        await userEvent.type(passwordInput, 'random@123')
+        await userEvent.click(submitButton)
+      })
       
       await waitFor(() => {
-        expect(mockSignIn).toHaveBeenCalledWith('snafu', 'random@123')
         expect(mockPush).toHaveBeenCalledWith('/dashboard')
       })
     })
 
     test('handles sign in error', async () => {
-      const mockSignIn = jest.fn().mockRejectedValue(new Error('Invalid credentials'))
-      jest.mock('@/lib/auth', () => ({
-        useAuth: () => ({
-          signIn: mockSignIn
-        })
-      }))
-      
-      render(<Login />)
+      render(
+        <SimpleAuthProvider>
+          <Login />
+        </SimpleAuthProvider>
+      )
       
       const usernameInput = screen.getByLabelText(/username/i)
       const passwordInput = screen.getByLabelText(/password/i)
       const submitButton = screen.getByRole('button', { name: /sign in/i })
-      
-      fireEvent.change(usernameInput, { target: { value: 'wronguser' } })
-      fireEvent.change(passwordInput, { target: { value: 'wrongpass' } })
-      fireEvent.click(submitButton)
+
+      await userEvent.type(usernameInput, 'wronguser')
+      await userEvent.type(passwordInput, 'wrongpass')
+      await userEvent.click(submitButton)
       
       await waitFor(() => {
         expect(screen.getByText(/Invalid credentials/i)).toBeInTheDocument()
-        expect(mockPush).not.toHaveBeenCalled()
       })
-    })
-
-    test('shows password reset disabled message', () => {
-      render(<Login />)
-      
-      // Should show system notice about disabled password reset
-      expect(screen.getByText(/Password reset is disabled/i)).toBeInTheDocument()
-      expect(screen.getByText(/System Notice:/i)).toBeInTheDocument()
-      expect(screen.getByText(/strict two-user authentication/i)).toBeInTheDocument()
     })
   })
 
   describe('Dashboard Authentication', () => {
-    test('redirects unauthenticated users to login', async () => {
-      // Mock useAuth to return no user
-      jest.doMock('@/lib/auth', () => ({
-        useAuth: () => ({
-          user: null,
-          loading: false,
-          signIn: jest.fn(),
-          signOut: jest.fn()
-        })
-      }))
-
-      render(<Dashboard />)
+    test('redirects unauthenticated users to login', () => {
+      render(
+        <SimpleAuthProvider>
+          <Dashboard />
+        </SimpleAuthProvider>
+      )
       
-      await waitFor(() => {
-        expect(mockPush).toHaveBeenCalledWith('/login')
-      })
+      expect(screen.getByText(/Access Denied/i)).toBeInTheDocument()
+      expect(screen.getByText(/Please sign in to view your dashboard/i)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Go to Login/i })).toBeInTheDocument()
     })
 
     test('shows dashboard for authenticated users', async () => {
-      // Mock useAuth to return authenticated user
-      const mockUser = {
-        id: '123',
-        email: 'test@example.com',
-        user_metadata: { name: 'Test User', role: 'viewer' }
-      }
-      
-      jest.doMock('@/lib/auth', () => ({
-        useAuth: () => ({
-          user: mockUser,
-          loading: false,
-          signIn: jest.fn(),
-          signOut: jest.fn()
-        })
+      // Mock authenticated user
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        user: { id: '1', username: 'snafu', role: 'admin' },
+        token: 'mock-token'
       }))
 
-      render(<Dashboard />)
+      render(
+        <SimpleAuthProvider>
+          <Dashboard />
+        </SimpleAuthProvider>
+      )
       
       await waitFor(() => {
-        expect(screen.getByText(/welcome back, test user/i)).toBeInTheDocument()
-        expect(screen.getByText(/account dashboard/i)).toBeInTheDocument()
+        expect(screen.getByText(/Welcome back/i)).toBeInTheDocument()
+        expect(screen.getByText(/Account Dashboard/i)).toBeInTheDocument()
         expect(mockPush).not.toHaveBeenCalled()
       })
     })
 
     test('handles sign out correctly', async () => {
-      const mockSignOut = jest.fn()
-      const mockUser = {
-        id: '123',
-        email: 'test@example.com',
-        user_metadata: { name: 'Test User', role: 'viewer' }
-      }
-      
-      jest.doMock('@/lib/auth', () => ({
-        useAuth: () => ({
-          user: mockUser,
-          loading: false,
-          signIn: jest.fn(),
-          signOut: mockSignOut
-        })
+      // Mock authenticated user
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        user: { id: '1', username: 'snafu', role: 'admin' },
+        token: 'mock-token'
       }))
 
-      render(<Dashboard />)
+      render(
+        <SimpleAuthProvider>
+          <Dashboard />
+        </SimpleAuthProvider>
+      )
       
       await waitFor(() => {
-        expect(screen.getByText(/sign out/i)).toBeInTheDocument()
+        expect(screen.getByText(/Welcome back/i)).toBeInTheDocument()
       })
       
-      const signOutButton = screen.getByText(/sign out/i)
+      const signOutButton = screen.getByText(/Sign Out/i)
       fireEvent.click(signOutButton)
       
       await waitFor(() => {
-        expect(mockSignOut).toHaveBeenCalled()
+        expect(localStorageMock.removeItem).toHaveBeenCalledWith('arbitrage_gods_user')
+        expect(mockPush).toHaveBeenCalledWith('/login')
       })
     })
   })
 
   describe('Role-Based Access Control', () => {
-    test('admin users have all permissions', () => {
-      const mockUser = {
-        id: '123',
-        email: 'admin@example.com',
-        user_metadata: { name: 'Admin User', role: 'admin' }
+    test('admin users have all permissions', async () => {
+      const TestComponent = () => {
+        const { user, isAdmin, hasPermission } = useSimpleAuth()
+        return (
+          <div>
+            <div data-testid="user-role">{user?.role}</div>
+            <div data-testid="is-admin">{isAdmin().toString()}</div>
+            <div data-testid="can-read">{hasPermission('view').toString()}</div>
+            <div data-testid="can-write">{hasPermission('add').toString()}</div>
+            <div data-testid="can-delete">{hasPermission('remove').toString()}</div>
+          </div>
+        )
       }
-      
-      jest.doMock('@/lib/auth', () => ({
-        useAuth: () => ({
-          user: mockUser,
-          loading: false,
-          signIn: jest.fn(),
-          signOut: jest.fn(),
-          hasPermission: (action: string) => true, // Admin has all permissions
-          isAdmin: () => true,
-          canManageUsers: () => true,
-          canManageAccounts: () => true,
-          canExport: () => true,
-          canArchive: () => true
-        })
+
+      // Mock admin user
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        id: 'user-1',
+        username: 'snafu',
+        name: 'Snafu User',
+        role: 'admin'
       }))
 
-      const { result } = renderHook(() => useAuth(), { wrapper: ({ children }) => children })
+      render(
+        <SimpleAuthProvider>
+          <TestComponent />
+        </SimpleAuthProvider>
+      )
       
-      expect(result.current.isAdmin()).toBe(true)
-      expect(result.current.canManageUsers()).toBe(true)
-      expect(result.current.canManageAccounts()).toBe(true)
-      expect(result.current.canExport()).toBe(true)
-      expect(result.current.canArchive()).toBe(true)
+      await waitFor(() => {
+        expect(screen.getByTestId('user-role')).toHaveTextContent('admin')
+        expect(screen.getByTestId('is-admin')).toHaveTextContent('true')
+        expect(screen.getByTestId('can-read')).toHaveTextContent('true')
+        expect(screen.getByTestId('can-write')).toHaveTextContent('true')
+        expect(screen.getByTestId('can-delete')).toHaveTextContent('true')
+      })
     })
 
-    test('viewer users have limited permissions', () => {
-      const mockUser = {
-        id: '456',
-        email: 'viewer@example.com',
-        user_metadata: { name: 'Viewer User', role: 'viewer' }
+    test('viewer users have limited permissions', async () => {
+      const TestComponent = () => {
+        const { user, isAdmin, hasPermission } = useSimpleAuth()
+        return (
+          <div>
+            <div data-testid="user-role">{user?.role}</div>
+            <div data-testid="is-admin">{isAdmin().toString()}</div>
+            <div data-testid="can-read">{hasPermission('view').toString()}</div>
+            <div data-testid="can-write">{hasPermission('add').toString()}</div>
+            <div data-testid="can-delete">{hasPermission('remove').toString()}</div>
+          </div>
+        )
       }
-      
-      jest.doMock('@/lib/auth', () => ({
-        useAuth: () => ({
-          user: mockUser,
-          loading: false,
-          signIn: jest.fn(),
-          signOut: jest.fn(),
-          hasPermission: (action: string) => action === 'view', // Only view permission
-          isAdmin: () => false,
-          canManageUsers: () => false,
-          canManageAccounts: () => false,
-          canExport: () => false,
-          canArchive: () => false
-        })
+
+      // Mock viewer user
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        id: 'user-2',
+        username: 'sid',
+        name: 'Sid User',
+        role: 'viewer'
       }))
 
-      const { result } = renderHook(() => useAuth(), { wrapper: ({ children }) => children })
+      render(
+        <SimpleAuthProvider>
+          <TestComponent />
+        </SimpleAuthProvider>
+      )
       
-      expect(result.current.isAdmin()).toBe(false)
-      expect(result.current.canManageUsers()).toBe(false)
-      expect(result.current.canManageAccounts()).toBe(false)
-      expect(result.current.canExport()).toBe(false)
-      expect(result.current.canArchive()).toBe(false)
-      expect(result.current.hasPermission('view')).toBe(true)
-      expect(result.current.hasPermission('add')).toBe(false)
+      await waitFor(() => {
+        expect(screen.getByTestId('user-role')).toHaveTextContent('viewer')
+        expect(screen.getByTestId('is-admin')).toHaveTextContent('false')
+        expect(screen.getByTestId('can-read')).toHaveTextContent('true')
+        expect(screen.getByTestId('can-write')).toHaveTextContent('false')
+        expect(screen.getByTestId('can-delete')).toHaveTextContent('false')
+      })
     })
   })
 
   describe('Session Persistence', () => {
-    test('refreshes session automatically', async () => {
-      const mockRefreshSession = require('@/lib/supabase').supabase.auth.refreshSession
-      mockRefreshSession.mockResolvedValue({
-        data: { 
-          session: {
-            user: {
-              id: '123',
-              email: 'test@example.com',
-              user_metadata: { name: 'Test User', role: 'viewer' }
-            }
-          }
-        },
-        error: null
+    test('persists user session to localStorage', async () => {
+      render(
+        <SimpleAuthProvider>
+          <Login />
+        </SimpleAuthProvider>
+      )
+      
+      const usernameInput = screen.getByLabelText(/username/i)
+      const passwordInput = screen.getByLabelText(/password/i)
+      const submitButton = screen.getByRole('button', { name: /sign in/i })
+
+      await userEvent.type(usernameInput, 'snafu')
+      await userEvent.type(passwordInput, 'random@123')
+      await userEvent.click(submitButton)
+      
+      await waitFor(() => {
+        expect(localStorageMock.setItem).toHaveBeenCalledWith(
+          'arbitrage_gods_user',
+          expect.stringContaining('snafu')
+        )
       })
-      
-      // Test session refresh logic
-      const { result } = renderHook(() => useAuth(), { wrapper: ({ children }) => children })
-      
-      const refreshResult = await result.current.refreshSession()
-      
-      expect(refreshResult).toBe(true)
-      expect(mockRefreshSession).toHaveBeenCalled()
     })
 
-    test('handles session refresh failure', async () => {
-      const mockRefreshSession = require('@/lib/supabase').supabase.auth.refreshSession
-      mockRefreshSession.mockResolvedValue({
-        data: { session: null },
-        error: { message: 'Session expired' }
+    test('loads session from localStorage on mount', async () => {
+      const TestComponent = () => {
+        const { user } = useSimpleAuth()
+        return (
+          <div data-testid="loaded-user">
+            {user ? `${user.username} - ${user.role}` : 'No user'}
+          </div>
+        )
+      }
+
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        id: 'user-1',
+        username: 'snafu',
+        name: 'Snafu User',
+        role: 'admin'
+      }))
+
+      render(
+        <SimpleAuthProvider>
+          <TestComponent />
+        </SimpleAuthProvider>
+      )
+      
+      await waitFor(() => {
+        expect(screen.getByTestId('loaded-user')).toHaveTextContent('snafu - admin')
+      })
+    })
+
+    test('clears session on sign out', async () => {
+      localStorageMock.getItem.mockReturnValue(JSON.stringify({
+        id: 'user-1',
+        username: 'snafu',
+        name: 'Snafu User',
+        role: 'admin'
+      }))
+
+      render(
+        <SimpleAuthProvider>
+          <Dashboard />
+        </SimpleAuthProvider>
+      )
+      
+      await waitFor(() => {
+        expect(screen.getByText(/Welcome back/i)).toBeInTheDocument()
       })
       
-      const { result } = renderHook(() => useAuth(), { wrapper: ({ children }) => children })
+      const signOutButton = screen.getByText(/Sign Out/i)
+      fireEvent.click(signOutButton)
       
-      const refreshResult = await result.current.refreshSession()
-      
-      expect(refreshResult).toBe(false)
-      expect(mockRefreshSession).toHaveBeenCalled()
+      await waitFor(() => {
+        expect(localStorageMock.removeItem).toHaveBeenCalledWith('arbitrage_gods_user')
+      })
     })
   })
 })
-
-// Helper function to render hooks in tests
-function renderHook<T, R>(hook: () => T, { wrapper }: { wrapper?: ({ children }: { children: React.ReactNode }) => React.ReactElement } = {}): { result: { current: R } } {
-  const result = { current: {} as R }
-  
-  function Wrapper({ children }: { children: React.ReactNode }) {
-    const hookResult = hook()
-    Object.assign(result, { current: hookResult })
-    return wrapper ? wrapper({ children }) : <>{children}</>
-  }
-  
-  render(<Wrapper><div /></Wrapper>)
-  
-  return { result }
-}

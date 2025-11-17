@@ -81,7 +81,9 @@ describe('DashboardGrid', () => {
     // Click suspended filter button - use getAllByText and get the button
     const suspendedButtons = screen.getAllByText('Suspended')
     const suspendedButton = suspendedButtons.find(btn => btn.tagName === 'BUTTON')
-    fireEvent.click(suspendedButton)
+    if (suspendedButton) {
+      fireEvent.click(suspendedButton)
+    }
     
     const suspendedCards = screen.getAllByTestId('account-card')
     expect(suspendedCards).toHaveLength(1)

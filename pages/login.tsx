@@ -38,16 +38,18 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-md w-full max-w-sm">
           <h2 className="text-xl font-semibold mb-4">Sign in</h2>
 
-          <label className="text-sm">Username</label>
+          <label htmlFor="username" className="text-sm">Username</label>
           <input
+            id="username"
             className="border p-2 w-full mb-3"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
           />
 
-          <label className="text-sm">Password</label>
+          <label htmlFor="password" className="text-sm">Password</label>
           <input
+            id="password"
             type="password"
             className="border p-2 w-full mb-3"
             value={password}
