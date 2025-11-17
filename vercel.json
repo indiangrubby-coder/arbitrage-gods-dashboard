@@ -1,17 +1,5 @@
 {
   "version": 2,
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_KEY": "@SUPABASE_SERVICE_KEY",
-    "FB_ACCESS_TOKEN": "@FB_ACCESS_TOKEN",
-    "FB_APP_ID": "@FB_APP_ID",
-    "FB_APP_SECRET": "@FB_APP_SECRET",
-    "NEXTAUTH_URL": "@NEXTAUTH_URL",
-    "NEXTAUTH_SECRET": "@NEXTAUTH_SECRET",
-    "SIMULATION_MODE": "@SIMULATION_MODE",
-    "DEBUG_MODE": "@DEBUG_MODE"
-  },
   "functions": {
     "api/simulate-fb-data.ts": {
       "maxDuration": 30
