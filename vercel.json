@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "@NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_KEY": "@SUPABASE_SERVICE_KEY",
+    "FB_ACCESS_TOKEN": "@FB_ACCESS_TOKEN",
+    "FB_APP_ID": "@FB_APP_ID",
+    "FB_APP_SECRET": "@FB_APP_SECRET",
+    "NEXTAUTH_URL": "@NEXTAUTH_URL",
+    "NEXTAUTH_SECRET": "@NEXTAUTH_SECRET",
+    "SIMULATION_MODE": "@SIMULATION_MODE",
+    "DEBUG_MODE": "@DEBUG_MODE"
+  },
+  "functions": {
+    "api/simulate-fb-data.ts": {
+      "maxDuration": 30
+    },
+    "api/fetch-fb-data-production.ts": {
+      "maxDuration": 60
+    },
+    "api/health.ts": {
+      "maxDuration": 10
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/simulate-fb-data",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/fetch-fb-data-production", 
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/health",
+      "schedule": "*/10 * * * *"
+    }
+  ],
+  "regions": ["iad1"],
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev"
+}
